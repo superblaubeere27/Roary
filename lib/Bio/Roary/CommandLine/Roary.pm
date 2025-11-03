@@ -201,6 +201,7 @@ sub BUILD {
     }
     $self->dont_delete_files($dont_delete_files) if ( defined($dont_delete_files) );
     $self->dont_split_groups($dont_split_groups) if ( defined($dont_split_groups) );
+    $self->allow_paralogs($allow_paralogs)       if ( defined($allow_paralogs) );
     $self->dont_create_rplots(0)                 if ( defined($create_rplots) );
     $self->verbose_stats($verbose_stats)         if ( defined $verbose_stats );
     $self->translation_table($translation_table) if ( defined($translation_table) );

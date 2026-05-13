@@ -60,8 +60,47 @@
 
       appCpanminus = pkgs.perlPackages.Appcpanminus;
     in {
+      packages.${system} = rec {
+        roary = pkgs.stdenv.mkDerivation {
+          pname = "roary";
+          version = "3.13.0";
+          src = ./.;
+
+          nativeBuildInputs = [ perlWithDeps appCpanminus pkgs.makeWrapper ];
+
+          buildInputs = [
+            pkgs.brotli
+            pkgs.gzip
+            pkgs.mafft
+            pkgs.bedtools
+          ];
+
+          installPhase = ''
+            mkdir -p $out/bin
+            mkdir -p $out/lib
+            cp bin/roary $out/bin/roary
+            cp -r lib/Bio $out/lib/
+            chmod +x $out/bin/roary
+            wrapProgram $out/bin/roary \
+              --prefix PATH : ${perlWithDeps}/bin \
+              --prefix PERL5LIB : ${perlWithDeps}/${pkgs.perl.libPrefix}:$out/lib
+          '';
+        };
+
+        default = roary;
+      };
+
+      apps.${system} = rec {
+        roary = {
+          type = "app";
+          program = "${self.packages.${system}.roary}/bin/roary";
+        };
+        default = roary;
+      };
+
       devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
+        packages = with pkgs; [
+          self.packages.${system}.roary
           perlWithDeps
           appCpanminus
           brotli
@@ -77,30 +116,5 @@
         '';
       };
 
-      packages.${system}.roary = pkgs.stdenv.mkDerivation {
-        pname = "roary";
-        version = "3.13.0";
-        src = ./.;
-
-        nativeBuildInputs = [ perlWithDeps appCpanminus pkgs.makeWrapper ];
-
-        buildInputs = [
-          pkgs.brotli
-          pkgs.gzip
-          pkgs.mafft
-          pkgs.bedtools
-        ];
-
-        installPhase = ''
-          mkdir -p $out/bin
-          mkdir -p $out/lib
-          cp bin/roary $out/bin/roary
-          cp -r lib/Bio $out/lib/
-          chmod +x $out/bin/roary
-          wrapProgram $out/bin/roary \
-            --prefix PATH : ${perlWithDeps}/bin \
-            --prefix PERL5LIB : ${perlWithDeps}/${pkgs.perl.libPrefix}:$out/lib
-        '';
-      };
     };
 }

@@ -10,18 +10,30 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
-      arrayUtils = pkgs.perlPackages.buildPerlPackage {
-        pname = "Array-Utils";
-        version = "0.5";
-        src = pkgs.fetchurl {
-          url = "https://cpan.metacpan.org/authors/id/Z/ZM/ZMIJ/Array/Array-Utils-0.5.tar.gz";
-          sha256 = "89dd1b7fcd9b4379492a3a77496e39fe6cd379b773fd03a6b160dd26ede63770";
-        };
-        doCheck = false;
-      };
+      perl = pkgs.perl.withPackages (p:
+        let
+          arrayUtils = p.buildPerlPackage {
+            pname = "Array-Utils";
+            version = "0.5";
+            src = pkgs.fetchurl {
+              url = "https://cpan.metacpan.org/authors/id/Z/ZM/ZMIJ/Array/Array-Utils-0.5.tar.gz";
+              sha256 = "89dd1b7fcd9b4379492a3a77496e39fe6cd379b773fd03a6b160dd26ede63770";
+            };
+            doCheck = false;
+          };
 
-      # Provide Perl with Roary runtime dependencies available in nixpkgs.
-      perlWithDeps = pkgs.perl.withPackages (p: (with p; [
+          bioProcedural = p.buildPerlPackage {
+            pname = "Bio-Procedural";
+            version = "1.7.4";
+            src = pkgs.fetchurl {
+              url = "https://cpan.metacpan.org/authors/id/C/CJ/CJFIELDS/Bio-Procedural-1.7.4.tar.gz";
+              sha256 = "sha256-0r2c+7CR7uLYDtbPgSrDgTscihqsogZxA39fIl0x0do=";
+            };
+            propagatedBuildInputs = [ p.BioPerl ];
+            doCheck = false;
+          };
+        in
+        (with p; [
         Moose
         FileWhich
         GetoptLongDescriptive
@@ -40,7 +52,11 @@
         TryTiny
         DataUUID
         SortNaturally
-      ]) ++ [ arrayUtils ]);
+      ]) ++ [ arrayUtils bioProcedural ]
+      );
+
+      # Provide Perl with Roary runtime dependencies available in nixpkgs.
+      perlWithDeps = perl;
 
       appCpanminus = pkgs.perlPackages.Appcpanminus;
     in {
@@ -66,7 +82,7 @@
         version = "3.13.0";
         src = ./.;
 
-        nativeBuildInputs = [ perlWithDeps appCpanminus ];
+        nativeBuildInputs = [ perlWithDeps appCpanminus pkgs.makeWrapper ];
 
         buildInputs = [
           pkgs.brotli
@@ -81,6 +97,9 @@
           cp bin/roary $out/bin/roary
           cp -r lib/Bio $out/lib/
           chmod +x $out/bin/roary
+          wrapProgram $out/bin/roary \
+            --prefix PATH : ${perlWithDeps}/bin \
+            --prefix PERL5LIB : ${perlWithDeps}/${pkgs.perl.libPrefix}:$out/lib
         '';
       };
     };

@@ -32,6 +32,17 @@
             propagatedBuildInputs = [ p.BioPerl ];
             doCheck = false;
           };
+
+          graphReadWrite = p.buildPerlPackage {
+            pname = "Graph-ReadWrite";
+            version = "2.10";
+            src = pkgs.fetchurl {
+              url = "https://cpan.metacpan.org/authors/id/N/NE/NEILB/Graph-ReadWrite-2.10.tar.gz";
+              sha256 = "sha256-UWweqfrLmV28ONFzXViXSyOZhiVn5zG3KcjQvC7loUs=";
+            };
+            propagatedBuildInputs = [ p.Graph p.GraphViz ];
+            doCheck = false;
+          };
         in
         (with p; [
         Moose
@@ -52,13 +63,57 @@
         TryTiny
         DataUUID
         SortNaturally
-      ]) ++ [ arrayUtils bioProcedural ]
+        FileFindRule
+      ]) ++ [ arrayUtils bioProcedural graphReadWrite ]
       );
 
       # Provide Perl with Roary runtime dependencies available in nixpkgs.
       perlWithDeps = perl;
 
       appCpanminus = pkgs.perlPackages.Appcpanminus;
+
+      mcl = pkgs.stdenv.mkDerivation {
+        pname = "mcl";
+        version = "14-137";
+        src = pkgs.fetchurl {
+          url = "https://micans.org/mcl/src/mcl-14-137.tar.gz";
+          sha256 = "sha256-tXhol6ioyhGes1WlYwgGpNpy6oQkPbqFsZqG8UdXtJc=";
+        };
+        nativeBuildInputs = [ pkgs.gnumake ];
+        configurePhase = ''
+          ./configure --prefix=$out
+        '';
+        buildPhase = ''
+          make CFLAGS="-fcommon"
+        '';
+        installPhase = ''
+          make install
+
+          # Upstream build no longer installs mcxdeblast in modern toolchains;
+          # ship the script from source to preserve Roary compatibility.
+          install -Dm755 src/alien/oxygen/src/mcxdeblast $out/bin/mcxdeblast
+        '';
+      };
+
+      fasttree = pkgs.stdenv.mkDerivation {
+        pname = "fasttree";
+        version = "2.1.10";
+        src = pkgs.fetchurl {
+          url = "http://microbesonline.org/fasttree/FastTree-2.1.10.c";
+          sha256 = "sha256-VMuJ/BcoqXSlnq56fuYwnN083dqaTFW3AKcSGfxukm0=";
+        };
+        dontUnpack = true;
+        nativeBuildInputs = [ pkgs.gcc ];
+        buildPhase = ''
+          cp $src FastTree.c
+          gcc -O3 -finline-functions -funroll-loops -o FastTree FastTree.c -lm
+        '';
+        installPhase = ''
+          mkdir -p $out/bin
+          cp FastTree $out/bin/FastTree
+          ln -s $out/bin/FastTree $out/bin/fasttree
+        '';
+      };
     in {
       packages.${system} = rec {
         roary = pkgs.stdenv.mkDerivation {
@@ -73,17 +128,41 @@
             pkgs.gzip
             pkgs.mafft
             pkgs.bedtools
+            pkgs.blast
+            pkgs."cd-hit"
+            pkgs.parallel
+            fasttree
+            mcl
           ];
 
           installPhase = ''
             mkdir -p $out/bin
             mkdir -p $out/lib
-            cp bin/roary $out/bin/roary
+            cp -r bin/* $out/bin/
             cp -r lib/Bio $out/lib/
-            chmod +x $out/bin/roary
-            wrapProgram $out/bin/roary \
-              --prefix PATH : ${perlWithDeps}/bin \
-              --prefix PERL5LIB : ${perlWithDeps}/${pkgs.perl.libPrefix}:$out/lib
+            chmod +x $out/bin/*
+
+            # Ensure all entrypoints can find bundled scripts, perl libraries,
+            # and external binaries required by the workflow.
+            externalPath=${pkgs.lib.makeBinPath [
+              pkgs.bedtools
+              pkgs.blast
+              pkgs."cd-hit"
+              pkgs.parallel
+              pkgs.mafft
+              pkgs.brotli
+              pkgs.gzip
+              fasttree
+              mcl
+            ]}
+
+            for exe in $out/bin/*; do
+              if [ -f "$exe" ]; then
+                wrapProgram "$exe" \
+                  --prefix PATH : $out/bin:$externalPath:${perlWithDeps}/bin \
+                  --prefix PERL5LIB : ${perlWithDeps}/${pkgs.perl.libPrefix}:$out/lib
+              fi
+            done
           '';
         };
 
